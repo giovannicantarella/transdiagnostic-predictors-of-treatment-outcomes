@@ -124,9 +124,6 @@ Key packages:
 - File paths should be adapted to the local environment.
 - Raw data are not included in this repository.
 
-## Author
+## Contact
 
-Giovanni Cantarella  
-Research Fellow  
-Department of Biomedical and Neuromotor Sciences (DIBINEM)  
-University of Bologna, Italy
+For questions or collaboration, please contact the repository owner.
