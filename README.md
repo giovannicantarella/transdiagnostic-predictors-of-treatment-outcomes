@@ -43,7 +43,7 @@ Files:
 Main steps:
 - Logistic regression models for each predictor
 - Estimation of odds ratios (OR), 95% confidence intervals, and p-values
-- Selection of predictors based on predefined significance thresholds
+- Selection of predictors based on predefined significance thresholds (p<0.10)
 
 ## Multivariable models
 
