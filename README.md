@@ -69,7 +69,6 @@ Files:
 - meta-analyses_remission_across_cohorts.R
 - meta-analyses_TR1_across_cohorts.R
 - meta-analyses_TR2_across_cohorts.R
-- univariable_age_sex_adjusted_meta.R
 - univariable_age_sex_adjusted_for_meta-analyses.R
 
 Main steps:
