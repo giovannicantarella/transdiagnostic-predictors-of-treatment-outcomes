@@ -1,6 +1,6 @@
 # Transdiagnostic Predictors of Treatment Outcomes
 
-This repository contains the scripts used to identify, model, and validate transdiagnostic clinical and genetic predictors of treatment outcomes (remission and treatment resistance) across major psychiatric disorders.
+This repository contains the scripts used to identify, model, and validate transdiagnostic clinical and genetic predictors of treatment outcomes (remission and treatment resistance) across major psychiatric disorders (i.e., SCZ, BD and MDD).
 
 ## Repository structure
 
