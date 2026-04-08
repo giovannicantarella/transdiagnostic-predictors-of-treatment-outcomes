@@ -79,7 +79,7 @@ Main steps:
 
 ## Validation
 
-Scripts for external validation of predictors in independent cohorts.
+Scripts for external validation of predictors in an independent MDD cohort.
 
 Files:
 - preprocessing_MDD_validation_cohort.R
