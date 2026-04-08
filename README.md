@@ -6,12 +6,14 @@ This repository contains the scripts used to identify, model, and validate trans
 
 The repository is organised into five main directories reflecting the analytical workflow:
 
+```
 scripts_transdiagnostic_predictors_treatment_outcomes/
 ├── preprocessing/
 ├── univariable/
 ├── multivariable/
 ├── meta-analyses/
 └── validation/
+```
 
 ## Preprocessing
 
