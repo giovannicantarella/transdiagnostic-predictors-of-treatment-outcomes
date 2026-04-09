@@ -2,7 +2,7 @@
 
 This repository contains generic scripts used to identify, model, and validate transdiagnostic clinical and genetic predictors of treatment outcomes (remission and treatment resistance) across major psychiatric disorders (SCZ, BD, MDD).
 
-The code is designed to be cohort-agnostic and reusable across datasets with similar structure.
+The code is designed to be applied across different cohorts and adapted to datasets with similar structure.
 
 ---
 
