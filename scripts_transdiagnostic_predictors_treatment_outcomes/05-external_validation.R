@@ -29,7 +29,6 @@
 #          3 discovery cohorts
 #
 # See 01-univariable_analyses for implementation details.
-# Only the predictor selection rule differs.
 
 # ============================================================
 # PART 2: Multivariable external validation
