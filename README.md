@@ -1,129 +1,195 @@
 # Transdiagnostic Predictors of Treatment Outcomes
 
-This repository contains the scripts used to identify, model, and validate transdiagnostic clinical and genetic predictors of treatment outcomes (remission and treatment resistance) across major psychiatric disorders (i.e., SCZ, BD and MDD).
+This repository contains generic scripts used to identify, model, and validate transdiagnostic clinical and genetic predictors of treatment outcomes (remission and treatment resistance) across major psychiatric disorders (SCZ, BD, MDD).
+
+The code is designed to be cohort-agnostic and reusable across datasets with similar structure.
+
+---
 
 ## Repository structure
 
-The repository is organised into five main directories reflecting the analytical workflow:
+The main folder contains scripts corresponding to the full analytical workflow:
 
 ```
 scripts_transdiagnostic_predictors_treatment_outcomes/
-├── preprocessing/
-├── univariable/
-├── multivariable/
-├── meta-analyses/
-└── validation/
+├── 00-preprocessing.R
+├── 01-univariable_analyses.R
+├── 02-multivariable_analyses.R
+├── 03-univariable_age_sex_adjusted_for_meta-analyses.R
+├── 04-meta-analyses_across_cohorts.R
+├── 05-external_validation.R
 ```
 
-## Preprocessing
+Each script represents one step of the pipeline and can be adapted to different cohorts by modifying only input data and variable mappings.
 
-Scripts for data cleaning, harmonisation, and variable construction across cohorts.
+---
 
-Files:
-- preprocessing_SCZ_cohort.R
-- preprocessing_BD_cohort.R
-- preprocessing_MDD_cohort.R
+## Analytical workflow
 
-Main steps:
-- Variable harmonisation across cohorts
-- Recoding of categorical predictors
-- Creation of derived variables
-- Handling of missing data
-- Preparation of analysis-ready datasets
+The analysis is structured in six sequential steps:
 
-## Univariable analyses
+1. Preprocessing  
+2. Univariable screening  
+3. Multivariable modelling (within cohort)  
+4. Age- and sex-adjusted models for meta-analysis  
+5. Meta-analysis across cohorts  
+6. External validation  
 
-Scripts performing univariable logistic regression analyses to screen predictors associated with treatment outcomes.
+---
 
-Files:
-- Univariable_SCZ_cohort.R
-- Univariable_BD_cohort.R
-- Univariable_MDD_cohort.R
+## Scripts description
+
+### 00 – Preprocessing
+
+Builds a cohort-level analytic dataset from raw data.
 
 Main steps:
-- Logistic regression models for each predictor
-- Estimation of odds ratios (OR), 95% confidence intervals, and p-values
-- Selection of predictors based on predefined significance thresholds (p<0.10)
+- Merge multiple raw sources  
+- Harmonise sociodemographic and clinical variables  
+- Derive grouped predictors (e.g. ordinal categories)  
+- Merge polygenic scores and ancestry PCs  
+- Residualise PRSs on PCs  
+- Define treatment outcomes (Remission, TR1, TR2)  
 
-## Multivariable models
+Note:  
+This script is intentionally flexible and should be adapted to each cohort’s raw data structure.
 
-Scripts implementing multivariable predictive models within each cohort.
+---
 
-Files:
-- Multivariable_SCZ_cohort.R
-- Multivariable_BD_cohort.R
-- Multivariable_MDD_cohort.R
+### 01 – Univariable analyses
+
+Performs univariable logistic regression analyses for each predictor.
 
 Main features:
-- Elastic Net logistic regression
-- Nested cross-validation framework
-- Hyperparameter tuning (alpha, lambda.1se)
-- Out-of-fold AUC estimation
-- Model selection based on performance and parsimony
+- One model per predictor  
+- Descriptive summaries by outcome status  
+- Odds ratios (OR), 95% CI, and p-values  
+- Consistent output tables across outcomes and cohorts  
 
-## Meta-analyses
+Typical use:
+- Initial screening of candidate predictors (e.g. p < 0.10)
 
-Scripts combining results across cohorts to identify robust transdiagnostic predictors.
+---
 
-Files:
-- meta-analyses_remission_across_cohorts.R
-- meta-analyses_TR1_across_cohorts.R
-- meta-analyses_TR2_across_cohorts.R
-- univariable_age_sex_adjusted_for_meta-analyses.R
+### 02 – Multivariable analyses
 
-Main steps:
-- Age- and sex-adjusted univariable models
-- Random-effects meta-analysis
-- Estimation of pooled effect sizes (logOR and OR)
-- Assessment of heterogeneity (I², τ²)
+Implements penalised multivariable models within each cohort.
 
-## Validation
+Main features:
+- Elastic Net logistic regression  
+- Nested cross-validation (outer AUC, inner lambda selection)  
+- Alpha tuning  
+- Gelman scaling (2 SD)  
+- Model selection based on performance and sparsity  
 
-Scripts for external validation of predictors in an independent MDD cohort.
+Output:
+- Selected predictors  
+- Out-of-fold AUC estimates  
+- Final fitted model objects  
 
-Files:
-- preprocessing_MDD_validation_cohort.R
-- univariable_validation_MDD_cohort.R
-- multivariable_validation_MDD_cohort.R
+---
 
-Main steps:
-- Harmonisation of the validation dataset
-- Replication of univariable associations
-- Application of multivariable models
-- Evaluation of predictive performance (AUC, effect estimates)
+### 03 – Age- and sex-adjusted univariable models (for meta-analysis)
 
-## Analytical framework
+Generates harmonised effect estimates across cohorts.
 
-The analytical workflow follows these steps:
+Model:
+```
+outcome ~ predictor + AGE + SEX
+```
 
-1. Data preprocessing and harmonisation
-2. Univariable screening of predictors
-3. Multivariable modelling within each cohort
-4. Meta-analysis across cohorts
-5. External validation in independent samples
+Main features:
+- Cohort-specific adjusted models  
+- Standardised log(OR) and SE extraction  
+- Output formatted for meta-analysis  
+
+Note:  
+The same script can be used for:
+- Remission  
+- TR1 (treatment-based resistance)  
+- TR2 (symptom-based resistance)  
+
+---
+
+### 04 – Meta-analyses across cohorts
+
+Combines cohort-level estimates using random-effects models.
+
+Main features:
+- Explicit cross-cohort harmonisation of predictors  
+- REML random-effects meta-analysis  
+- Heterogeneity metrics (I², τ², Q)  
+- Leave-one-out analyses  
+- Optional forest plots  
+
+Key concept:  
+Predictor correspondence across cohorts is defined explicitly rather than assumed.
+
+---
+
+### 05 – External validation
+
+Validates selected predictors in an independent cohort.
+
+Workflow:
+
+Step 1 – Univariable validation  
+- Same logic as 01-univariable_analyses  
+- Restricted to predictors selected from meta-analyses:  
+  - pooled p < 0.10  
+  - consistent direction in ≥2/3 cohorts  
+
+Step 2 – Multivariable validation  
+- Standard logistic regression (glm)  
+- No penalisation or tuning  
+- Joint estimation of selected predictors  
+
+---
 
 ## Outcomes
 
-The analyses focus on the following outcomes:
-- Remission
-- Treatment resistance (TR1: treatment-based; TR2: symptom-based)
+The analyses focus on three harmonised outcomes:
+
+- Remission  
+- Treatment resistance (TR1): treatment-based phenotype  
+- Treatment resistance (TR2): symptom-based phenotype  
+
+---
+
+## General principles
+
+- Scripts are generic templates, not cohort-specific pipelines  
+- Cohort differences are handled at the level of:
+  - input data  
+  - variable naming  
+  - outcome definitions  
+- Preprocessing is intentionally flexible to accommodate heterogeneity across studies  
+- Downstream steps enforce consistency in modelling and reporting  
+
+---
 
 ## Requirements
 
-R (version 4.0 or higher recommended)
+R (≥ 4.0 recommended)
 
 Key packages:
-- glmnet
-- pROC
-- dplyr
-- tidyverse
-- metafor
+- dplyr  
+- tidyverse  
+- glmnet  
+- pROC  
+- metafor  
+- broom  
+
+---
 
 ## Notes
 
-- Scripts are intended to be run sequentially following the directory structure.
-- File paths should be adapted to the local environment.
-- Raw data are not included in this repository.
+- Scripts are intended to be run sequentially  
+- File paths must be adapted locally  
+- Raw data are not included in this repository  
+- Outputs are generated as tables and model objects for downstream use  
+
+---
 
 ## Contact
 
