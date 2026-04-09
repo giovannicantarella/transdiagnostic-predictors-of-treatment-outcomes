@@ -1,6 +1,6 @@
 # ============================================================
 # Project: Transdiagnostic predictors of treatment outcomes
-# Script: Multivariable modelling workflow
+# Script: Multivariable modelling workflow within each cohort
 #
 # Purpose:
 # - fit penalised multivariable logistic regression models
