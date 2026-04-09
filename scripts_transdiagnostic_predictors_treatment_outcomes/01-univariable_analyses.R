@@ -1,6 +1,6 @@
 ############################################################
 # Project: Transdiagnostic predictors of treatment outcomes
-# Script: Generic univariable analyses
+# Script: Univariable analyses within each cohort
 #
 # Purpose:
 # - summarise candidate predictors by binary outcome status
