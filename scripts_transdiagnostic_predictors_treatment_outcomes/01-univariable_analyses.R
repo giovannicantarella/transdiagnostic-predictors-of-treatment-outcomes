@@ -24,25 +24,11 @@ options(stringsAsFactors = FALSE)
 # ============================================================
 # Input dataset
 # ============================================================
-# Replace this object with the analytic dataset for the cohort of interest.
-# The dataset should already contain:
-# - one row per participant
-# - harmonised predictors
-# - binary outcomes coded as 0/1
-# ============================================================
 
 analysis_df <- cohort_df
 
 # ============================================================
 # Outcomes and predictors
-# ============================================================
-# Replace these placeholders with the outcomes and predictors available
-# in the current cohort. The same script can be reused across cohorts by
-# updating only these vectors.
-#
-# Suggested use:
-# - outcomes: remission and/or resistance phenotypes
-# - predictors: sociodemographic, clinical, and genetic variables
 # ============================================================
 
 outcomes <- c("OUTCOME_1", "OUTCOME_2")
@@ -62,14 +48,6 @@ predictors <- c(
 # ============================================================
 # Optional predictor type overrides
 # ============================================================
-# In many datasets, variable classes are already informative
-# (numeric, factor, ordered factor). Still, it is often useful to force
-# some variables to be treated in a specific way regardless of storage.
-#
-# Examples:
-# - binary variables stored as 0/1 numeric can be forced to categorical
-# - grouped severity measures can be forced to ordinal
-# ============================================================
 
 force_binary <- c(
   "SEX",
@@ -83,6 +61,18 @@ force_ordinal <- c(
 )
 
 # ============================================================
+# Minimum data requirements
+# ============================================================
+# These thresholds are pragmatic, user-defined safeguards rather than
+# fixed statistical rules. They should be reviewed and adapted depending
+# on the cohort size, outcome prevalence, predictor distribution, and
+# modelling aims.
+# ============================================================
+
+min_complete_cases <- 5
+min_unique_values  <- 2
+
+# ============================================================
 # Helper functions
 # ============================================================
 
@@ -90,14 +80,12 @@ round3 <- function(x) {
   ifelse(is.na(x), NA, round(x, 3))
 }
 
-# Summary string for continuous predictors
 mean_sd_str <- function(x) {
   x <- x[!is.na(x)]
   if (length(x) == 0) return(NA_character_)
   sprintf("%.3f ± %.3f", mean(x), sd(x))
 }
 
-# Summary string for categorical / ordinal predictors
 cat_dist_str <- function(x, y, yval) {
   xi <- x[y == yval]
   tab <- table(xi, useNA = "no")
@@ -115,7 +103,6 @@ cat_dist_str <- function(x, y, yval) {
   paste(parts, collapse = " | ")
 }
 
-# Clean text to avoid issues in exports
 clean_text <- function(s) {
   s <- as.character(s)
   s <- gsub("\t", " ", s)
@@ -125,7 +112,6 @@ clean_text <- function(s) {
   trimws(s)
 }
 
-# Make character columns safer for spreadsheet export
 clean_for_export <- function(df, sep = ";") {
   out <- df
   chr_cols <- names(out)[vapply(out, is.character, logical(1))]
@@ -139,7 +125,6 @@ clean_for_export <- function(df, sep = ";") {
   out
 }
 
-# Infer predictor type using object class plus optional overrides
 get_type <- function(df, v) {
   if (v %in% force_binary) return("categorical")
   if (v %in% force_ordinal) return("ordinal")
@@ -152,10 +137,6 @@ get_type <- function(df, v) {
   "categorical"
 }
 
-# Set modelling reference level
-# For ordinal variables, the default behaviour here is to use the first
-# level as reference. If a different reference is preferred, change this
-# function rather than editing the modelling code later.
 set_reference <- function(x, type) {
   
   if (type == "continuous") return(x)
@@ -172,7 +153,6 @@ set_reference <- function(x, type) {
   stats::relevel(x, ref = levels(x)[1])
 }
 
-# Wald confidence intervals on the log-odds scale
 wald_ci <- function(model) {
   b  <- coef(model)
   se <- sqrt(diag(vcov(model)))
@@ -185,7 +165,6 @@ wald_ci <- function(model) {
   out
 }
 
-# Extract category label from model term
 extract_level <- function(varname, term) {
   t <- term
   t <- gsub("^`", "", t)
@@ -197,17 +176,6 @@ extract_level <- function(varname, term) {
 
 # ============================================================
 # Main function
-# ============================================================
-# For each predictor:
-# 1. keep complete cases on outcome and predictor
-# 2. describe predictor separately for outcome = 0 and outcome = 1
-# 3. fit a univariable logistic model
-# 4. extract coefficient-level ORs and 95% CIs
-# 5. store the global likelihood ratio statistic for the predictor
-#
-# Output structure:
-# - one row for each continuous predictor
-# - one row per non-reference level for categorical / ordinal predictors
 # ============================================================
 
 build_univariable_table <- function(df, outcome, predictors) {
@@ -240,16 +208,19 @@ build_univariable_table <- function(df, outcome, predictors) {
     type <- get_type(df, v)
     
     tmp <- df %>%
-      dplyr::select(dplyr::all_of(c(outcome, v))) %>%
-      dplyr::filter(!is.na(.data[[outcome]]), !is.na(.data[[v]]))
+      select(all_of(c(outcome, v))) %>%
+      filter(!is.na(.data[[outcome]]), !is.na(.data[[v]]))
     
     n_total <- nrow(tmp)
-    if (n_total < 5) next
+    
+    # Skip predictors with too few complete observations
+    if (n_total < min_complete_cases) next
     
     y <- tmp[[outcome]]
     x <- tmp[[v]]
     
-    if (length(unique(x)) < 2) next
+    # Skip predictors with insufficient variation
+    if (length(unique(x)) < min_unique_values) next
     
     # Descriptive summaries
     if (type == "continuous") {
@@ -260,13 +231,11 @@ build_univariable_table <- function(df, outcome, predictors) {
       dist1 <- cat_dist_str(x, y, 1)
     }
     
-    # Prepare variable for modelling
     x_mod <- set_reference(x, type)
     tmp[[v]] <- x_mod
     
-    # Fit models for LRT
-    full_formula  <- as.formula(paste0(outcome, " ~ `", v, "`"))
-    null_formula  <- as.formula(paste0(outcome, " ~ 1"))
+    full_formula <- as.formula(paste0(outcome, " ~ `", v, "`"))
+    null_formula <- as.formula(paste0(outcome, " ~ 1"))
     
     model_full <- glm(full_formula, data = tmp, family = binomial())
     model_null <- glm(null_formula, data = tmp, family = binomial())
@@ -279,7 +248,6 @@ build_univariable_table <- function(df, outcome, predictors) {
     
     ref_level <- if (type == "continuous") "" else clean_text(levels(tmp[[v]])[1])
     
-    # Continuous predictor: one coefficient only
     if (type == "continuous") {
       
       beta    <- as.numeric(sm[2, "Estimate"])
@@ -315,7 +283,6 @@ build_univariable_table <- function(df, outcome, predictors) {
       
     } else {
       
-      # Categorical / ordinal predictor: one row for each non-reference level
       rn <- rownames(sm)
       rn <- rn[rn != "(Intercept)"]
       
@@ -370,9 +337,7 @@ build_univariable_table <- function(df, outcome, predictors) {
 }
 
 # ============================================================
-# Run univariable analyses for all outcomes
-# ============================================================
-# The result is a named list of tables, one per outcome.
+# Run analyses
 # ============================================================
 
 univariable_results <- lapply(outcomes, function(outcome_name) {
@@ -386,10 +351,7 @@ univariable_results <- lapply(outcomes, function(outcome_name) {
 names(univariable_results) <- outcomes
 
 # ============================================================
-# Optional export
-# ============================================================
-# One semicolon-separated csv per outcome.
-# This is convenient for spreadsheet software and for repository sharing.
+# Export
 # ============================================================
 
 for (outcome_name in names(univariable_results)) {
@@ -404,7 +366,7 @@ for (outcome_name in names(univariable_results)) {
 }
 
 # ============================================================
-# Optional console preview
+# Preview
 # ============================================================
 
 for (outcome_name in names(univariable_results)) {
