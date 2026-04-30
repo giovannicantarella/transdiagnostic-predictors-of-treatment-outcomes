@@ -6,6 +6,7 @@
 # - assemble one baseline analytic dataset from cohort-specific raw files
 # - derive harmonised sociodemographic and clinical predictors
 # - merge polygenic scores and ancestry principal components
+# - residualise polygenic scores on ancestry principal components
 # - derive treatment outcome phenotypes when available
 #
 # Notes:
@@ -29,10 +30,6 @@ options(stringsAsFactors = FALSE)
 # ============================================================
 # Input paths
 # ============================================================
-# Replace these placeholders with cohort-specific folders/files.
-# In practice, one cohort may store data across many raw files,
-# whereas another may already provide a nearly complete master file.
-# ============================================================
 
 raw_data_dir  <- "INSERT_PATH_TO_RAW_DATA"
 prs_dir       <- "INSERT_PATH_TO_PRS"
@@ -41,10 +38,6 @@ pheno_dir     <- "INSERT_PATH_TO_PHENOTYPES"
 # ============================================================
 # Main dataset
 # ============================================================
-# This should be the main cohort-level file used as the backbone for
-# subsequent merges. Ideally, it should contain one row per participant.
-# If this is not the case, reduce it to one row per participant first.
-# ============================================================
 
 cohort_df <- read.csv("COHORT.csv", check.names = FALSE, stringsAsFactors = FALSE)
 
@@ -52,20 +45,14 @@ cohort_df <- read.csv("COHORT.csv", check.names = FALSE, stringsAsFactors = FALS
 # Helper functions
 # ============================================================
 
-# Standardise identifiers before joining files.
-# Useful when the same participant appears with slightly different ID
-# formatting across raw, genetic, and phenotype files.
 canon_id <- function(x) {
   gsub("[^A-Z0-9]", "", toupper(as.character(x)))
 }
 
-# Parse numbers from mixed strings.
-# This helps when variables are stored as "3 Moderate", "Score=5", etc.
 parse_num <- function(x) {
   suppressWarnings(readr::parse_number(as.character(x)))
 }
 
-# Convert common yes/no encodings to 1/0.
 recode_yes_no <- function(x) {
   z <- trimws(as.character(x))
   case_when(
@@ -75,7 +62,6 @@ recode_yes_no <- function(x) {
   )
 }
 
-# Read whitespace-delimited files and clean character columns.
 read_ws <- function(path) {
   x <- readr::read_table(path, col_names = TRUE, progress = FALSE)
   x <- x %>% mutate(across(where(is.character), ~ str_squish(.)))
@@ -85,9 +71,6 @@ read_ws <- function(path) {
   x
 }
 
-# Keep one baseline row per participant.
-# Different cohorts may encode baseline differently, so the function
-# tries a few common conventions in order.
 pick_baseline <- function(df) {
   if ("BASE1" %in% names(df)) {
     df %>% filter(BASE1 == 1)
@@ -109,7 +92,7 @@ pick_baseline <- function(df) {
 }
 
 # Standardise a PC table so that:
-# - first column is the genetic ID
+# - first column is the generic genetic ID
 # - remaining columns are PC1, PC2, ...
 # - duplicated ID columns are removed if present
 normalize_pc_df <- function(x) {
@@ -121,7 +104,7 @@ normalize_pc_df <- function(x) {
     x <- x[, -2, drop = FALSE]
   }
   
-  names(x)[1] <- "GEN_PUBLICID"
+  names(x)[1] <- "GEN_ID"
   
   if (ncol(x) > 1) {
     names(x)[-1] <- paste0("PC", seq_len(ncol(x) - 1))
@@ -130,16 +113,15 @@ normalize_pc_df <- function(x) {
   x <- x %>%
     mutate(across(starts_with("PC"), ~ suppressWarnings(as.numeric(.))))
   
-  x$GEN_PUBLICID <- ifelse(
-    grepl("_.+", x$GEN_PUBLICID),
-    sub("_.+$", "", x$GEN_PUBLICID),
-    x$GEN_PUBLICID
+  x$GEN_ID <- ifelse(
+    grepl("_.+", x$GEN_ID),
+    sub("_.+$", "", x$GEN_ID),
+    x$GEN_ID
   )
   
-  distinct(x, GEN_PUBLICID, .keep_all = TRUE)
+  distinct(x, GEN_ID, .keep_all = TRUE)
 }
 
-# Read one PC file, allowing for malformed or absent headers.
 read_pc_file <- function(path) {
   x <- tryCatch(
     readr::read_table(path, col_names = TRUE, progress = FALSE),
@@ -156,7 +138,6 @@ read_pc_file <- function(path) {
   normalize_pc_df(x)
 }
 
-# Read PCs either from a single file or from a folder.
 read_cohort_pcs <- function(path = file.path(pheno_dir, "COHORT_PCs")) {
   if (fs::file_exists(path) && !fs::is_dir(path)) {
     return(read_pc_file(path))
@@ -172,8 +153,6 @@ read_cohort_pcs <- function(path = file.path(pheno_dir, "COHORT_PCs")) {
   tibble()
 }
 
-# Residualise a PRS on ancestry PCs.
-# The z-standardised residual is often the version used in downstream models.
 residualize_prs <- function(df, prs_name, pcs = c("PC1", "PC2", "PC3", "PC4")) {
   vars_needed <- c(prs_name, pcs)
   vars_needed <- vars_needed[vars_needed %in% names(df)]
@@ -193,16 +172,21 @@ residualize_prs <- function(df, prs_name, pcs = c("PC1", "PC2", "PC3", "PC4")) {
     return(df)
   }
   
-  form <- as.formula(paste(prs_name, "~", paste(setdiff(vars_needed, prs_name), collapse = " + ")))
-  fit  <- lm(form, data = tmp[ok, , drop = FALSE])
+  pc_terms <- setdiff(vars_needed, prs_name)
   
-  resid_vals <- resid(fit)
+  if (length(pc_terms) == 0) {
+    resid_vals <- scale(tmp[[prs_name]][ok])
+  } else {
+    form <- as.formula(paste(prs_name, "~", paste(pc_terms, collapse = " + ")))
+    fit  <- lm(form, data = tmp[ok, , drop = FALSE])
+    resid_vals <- resid(fit)
+  }
   
   df[[paste0(prs_name, "_resid")]]   <- NA_real_
   df[[paste0(prs_name, "_resid_z")]] <- NA_real_
   
   idx <- which(ok)
-  df[[paste0(prs_name, "_resid")]][idx]   <- resid_vals
+  df[[paste0(prs_name, "_resid")]][idx]   <- as.numeric(resid_vals)
   df[[paste0(prs_name, "_resid_z")]][idx] <- as.numeric(scale(resid_vals))
   
   df
@@ -210,12 +194,6 @@ residualize_prs <- function(df, prs_name, pcs = c("PC1", "PC2", "PC3", "PC4")) {
 
 # ============================================================
 # Cohort-specific raw sources
-# ============================================================
-# In most cohorts, predictors are spread across several files.
-# Read here the raw sources that are needed to reconstruct the
-# harmonised baseline variables.
-#
-# Replace the example filenames with the actual cohort files.
 # ============================================================
 
 demographics_df <- read.csv(file.path(raw_data_dir, "DEMOGRAPHICS.csv"),
@@ -233,42 +211,29 @@ history_df <- read.csv(file.path(raw_data_dir, "HISTORY.csv"),
 # ============================================================
 # Baseline records
 # ============================================================
-# Longitudinal files are reduced to baseline wherever appropriate.
-# The exact visit label may differ across cohorts and should be checked.
-# ============================================================
 
-clinical_bl   <- pick_baseline(clinical_df)
-function_bl   <- pick_baseline(function_df)
-history_bl    <- pick_baseline(history_df)
+clinical_bl <- pick_baseline(clinical_df)
+function_bl <- pick_baseline(function_df)
+history_bl  <- pick_baseline(history_df)
 
 # ============================================================
 # Core demographic variables
-# ============================================================
-# The target here is to derive broadly harmonised variables such as:
-# - age
-# - sex/gender
-# - employment
-# - marital status / relationship indicators
-# - education
-# - income or socioeconomic status
-#
-# The exact source variables below are placeholders.
 # ============================================================
 
 cohort_df <- cohort_df %>%
   left_join(
     demographics_df %>%
       transmute(
-        SUBJECT_ID = as.character(SUBJECT_ID),
-        Age_raw            = AGE,
-        Sex_raw            = SEX,
-        Employment_raw     = EMPLOYMENT,
-        Marital_raw        = MARITAL_STATUS,
-        Education_raw      = EDUCATION,
-        Income_raw         = INCOME,
-        LivesAlone_raw     = LIVE_ALONE,
-        Race_raw           = RACE,
-        Ethnicity_raw      = ETHNICITY
+        SUBJECT_ID     = as.character(SUBJECT_ID),
+        Age_raw        = AGE,
+        Sex_raw        = SEX,
+        Employment_raw = EMPLOYMENT,
+        Marital_raw    = MARITAL_STATUS,
+        Education_raw  = EDUCATION,
+        Income_raw     = INCOME,
+        LivesAlone_raw = LIVE_ALONE,
+        Race_raw       = RACE,
+        Ethnicity_raw  = ETHNICITY
       ),
     by = c("ID" = "SUBJECT_ID")
   ) %>%
@@ -297,12 +262,8 @@ cohort_df <- cohort_df %>%
     ),
     
     Lives_Alone = recode_yes_no(LivesAlone_raw),
-    
     Education_years = suppressWarnings(as.numeric(Education_raw))
-  )
-
-# Optional education grouping
-cohort_df <- cohort_df %>%
+  ) %>%
   mutate(
     Education_3cat = case_when(
       Education_years <= 12 ~ 1L,
@@ -321,18 +282,12 @@ cohort_df <- cohort_df %>%
 # ============================================================
 # Clinical severity and symptom dimensions
 # ============================================================
-# This block should extract baseline measures for core domains that were
-# later considered as candidate predictors in the harmonised analyses.
-#
-# Depending on the cohort, these may come from global severity scales,
-# diagnosis-specific symptom ratings, or single items.
-# ============================================================
 
 cohort_df <- cohort_df %>%
   left_join(
     clinical_bl %>%
       transmute(
-        SUBJECT_ID = as.character(SUBJECT_ID),
+        SUBJECT_ID             = as.character(SUBJECT_ID),
         Severity_raw           = GLOBAL_SEVERITY,
         Anxiety_raw            = ANXIETY,
         Psychotic_raw          = PSYCHOTIC_SYMPTOMS,
@@ -355,10 +310,7 @@ cohort_df <- cohort_df %>%
     N_previous_episodes = parse_num(PreviousEpisodes_raw),
     Hospitalization = recode_yes_no(Hospitalization_raw),
     Comorbidity = recode_yes_no(Comorbidity_raw)
-  )
-
-# Example grouped versions often useful for modelling
-cohort_df <- cohort_df %>%
+  ) %>%
   mutate(
     Severity_3cat = case_when(
       Severity %in% c(1, 2)    ~ 1L,
@@ -404,11 +356,6 @@ cohort_df <- cohort_df %>%
 # ============================================================
 # Functioning
 # ============================================================
-# Functioning was not measured identically across cohorts, but all three
-# preprocessing scripts retained a baseline indicator of functioning or
-# psychosocial impairment. Replace FUNCTIONING_TOTAL with the cohort-
-# specific score used in that study.
-# ============================================================
 
 cohort_df <- cohort_df %>%
   left_join(
@@ -423,17 +370,6 @@ cohort_df <- cohort_df %>%
 # ============================================================
 # Optional cohort-specific variables
 # ============================================================
-# Add here variables that are available only in some cohorts but still
-# relevant for harmonised downstream analyses, for example:
-# - specific social functioning domains
-# - family history
-# - adverse events
-# - smoking / substance use
-# - age at onset
-# - diagnosis-specific severity items
-#
-# Keep the same naming logic whenever possible.
-# ============================================================
 
 # Example:
 # cohort_df <- cohort_df %>%
@@ -445,20 +381,25 @@ cohort_df <- cohort_df %>%
 # ============================================================
 # Polygenic risk scores
 # ============================================================
-# The PRS file is expected to contain one row per participant and one or
-# more genetic identifiers. Adapt the filename and identifier fields to
-# the cohort at hand.
+# GEN_ID is used as a generic genetic identifier.
+# If the source PRS file uses a cohort-specific name such as GEN_PUBLICID,
+# rename it to GEN_ID immediately after reading.
 # ============================================================
 
 prs_df <- read_table(
   file.path(prs_dir, "all_COHORT_PRSs_standard"),
   col_types = cols(
-    IID          = col_character(),
-    GEN_PUBLICID = col_character(),
-    SUBJECT_ID   = col_character(),
-    .default     = col_double()
+    IID        = col_character(),
+    GEN_ID     = col_character(),
+    SUBJECT_ID = col_character(),
+    .default   = col_double()
   )
 )
+
+# Optional compatibility step for datasets that still use GEN_PUBLICID
+if ("GEN_PUBLICID" %in% names(prs_df) && !"GEN_ID" %in% names(prs_df)) {
+  prs_df <- prs_df %>% rename(GEN_ID = GEN_PUBLICID)
+}
 
 prs_vars <- c(
   "ADHD05_PRS", "BODY04_PRS", "BP_PRS",
@@ -471,7 +412,7 @@ prs_keep <- prs_df %>%
   mutate(
     SUBJECT_ID = as.character(SUBJECT_ID),
     IID_key    = canon_id(sub("_[^_]+$", "", IID)),
-    GEN_key    = canon_id(GEN_PUBLICID),
+    GEN_key    = canon_id(GEN_ID),
     SUBJ_key   = canon_id(SUBJECT_ID)
   )
 
@@ -481,7 +422,7 @@ cohort_df <- cohort_df %>%
     prs_keep %>%
       transmute(
         ID_key = coalesce(SUBJ_key, IID_key, GEN_key),
-        across(all_of(c("IID", "GEN_PUBLICID", prs_vars_present)))
+        across(all_of(c("IID", "GEN_ID", prs_vars_present)))
       ) %>%
       distinct(ID_key, .keep_all = TRUE),
     by = "ID_key"
@@ -491,21 +432,29 @@ cohort_df <- cohort_df %>%
 # ============================================================
 # Principal components
 # ============================================================
-# PCs may need to be merged through different genetic identifiers.
-# The code below tries to match them using canonical IDs.
+# PCs are also standardised to use GEN_ID as the genetic identifier.
+# The code tries to match PCs using either IID or GEN_ID.
 # ============================================================
 
 pcs <- read_cohort_pcs(file.path(pheno_dir, "COHORT_PCs"))
 
 pcs_join <- pcs %>%
-  mutate(PC_KEY = canon_id(GEN_PUBLICID)) %>%
+  mutate(PC_KEY = canon_id(GEN_ID)) %>%
   select(PC_KEY, starts_with("PC")) %>%
   distinct(PC_KEY, .keep_all = TRUE)
 
 cohort_df <- cohort_df %>%
   mutate(
-    K_IID = if ("IID" %in% names(.)) canon_id(sub("_[^_]+$", "", IID)) else NA_character_,
-    K_GEN = if ("GEN_PUBLICID" %in% names(.)) canon_id(GEN_PUBLICID) else NA_character_
+    K_IID = if ("IID" %in% names(.)) {
+      canon_id(sub("_[^_]+$", "", IID))
+    } else {
+      NA_character_
+    },
+    K_GEN = if ("GEN_ID" %in% names(.)) {
+      canon_id(GEN_ID)
+    } else {
+      NA_character_
+    }
   )
 
 n_match_iid <- inner_join(
@@ -532,9 +481,8 @@ cohort_df <- cohort_df %>%
 # ============================================================
 # PRS residualisation
 # ============================================================
-# Residualise PRSs on ancestry PCs. In some cohorts, additional site
-# covariates may also be included here if required by the genetic data
-# processing strategy.
+# Residualise PRSs on ancestry PCs only once, after both PRS and
+# population PC data have been merged into the analytic dataset.
 # ============================================================
 
 pc_vars <- c("PC1", "PC2", "PC3", "PC4")
@@ -546,17 +494,7 @@ for (prs in prs_vars_present) {
 # ============================================================
 # Treatment outcome phenotypes
 # ============================================================
-# The original cohorts did not all define outcomes in the same way.
-# Keep this block explicit, because remission and resistance variables
-# often come from external phenotype files or from longitudinal ratings.
-#
-# Suggested convention:
-# - Remission: binary remission phenotype
-# - TR1: treatment-based resistance phenotype
-# - TR2: symptom-based / longitudinal severity phenotype
-# ============================================================
 
-# ---------- Example: phenotype file with outcome variables ----------
 outcome_df <- read_ws(file.path(pheno_dir, "COHORT_OUTCOMES.txt"))
 
 cohort_df <- cohort_df %>%
@@ -600,20 +538,12 @@ cohort_df <- cohort_df %>%
 # ============================================================
 # Final checks and light recoding
 # ============================================================
-# This is a good place to:
-# - convert lingering text-coded variables to numeric/factor form
-# - check duplicate IDs
-# - inspect missingness in newly derived variables
-# ============================================================
 
 cohort_df <- cohort_df %>%
   distinct(ID, .keep_all = TRUE)
 
 # ============================================================
 # Save output
-# ============================================================
-# Save the cohort-level analytic dataset for downstream univariable,
-# multivariable, and validation analyses.
 # ============================================================
 
 write.csv(cohort_df, "cohort_preprocessed.csv", row.names = FALSE, na = "")
