@@ -13,7 +13,7 @@ The code is designed to be applied across different cohorts and adapted to datas
 
 The main folder contains scripts corresponding to the full analytical workflow:
 
-```
+```text
 scripts_transdiagnostic_predictors_treatment_outcomes/
 ├── 00-preprocessing.R
 ├── 01-univariable_analyses.R
@@ -36,7 +36,7 @@ The analysis is structured in six sequential steps:
 3. Multivariable modelling and calibration (within cohort)
 4. Age- and sex-adjusted models for meta-analysis
 5. Meta-analysis across cohorts
-6. Independent replication
+6. Independent replication (univariable and multivariable analyses)
 
 ---
 
@@ -112,7 +112,7 @@ Generates harmonised effect estimates across cohorts.
 
 General model:
 
-```
+```text
 outcome ~ predictor + AGE + SEX
 ```
 
@@ -154,25 +154,42 @@ Pooled associations are interpreted alongside the direction of cohort-specific e
 
 Tests selected associations in an independent MDD cohort (STAR*D).
 
+The script implements univariable and multivariable replication analyses, using predictors identified from the discovery meta-analyses.
+
 Workflow:
 
-Step 1 – Univariable analyses
-- Same general logic as 01-univariable_analyses
-- Restricted to predictors selected from discovery meta-analyses:
+Step 1 – Univariable independent replication
+- Descriptive summaries of candidate predictors by outcome status
+- Univariable logistic regression for each selected predictor
+- Odds ratios (OR), 95% confidence intervals, and p-values
+- Overall predictor p-values based on likelihood-ratio tests
+- Predictors selected from discovery meta-analyses according to:
   - pooled p < 0.10
-  - consistent direction in at least two of the three contributing cohorts
+  - consistent direction in at least two of the three contributing discovery cohorts
+- No additional significance-based screening in the replication cohort
 
-Step 2 – Multivariable analyses
-- Standard logistic regression (glm)
-- No penalisation or tuning
-- Joint estimation of selected predictors
-- Predictor inclusion balanced against data availability and complete-case sample size
-- In-sample AUC estimation
+Step 2 – Multivariable independent replication
+- Standard multivariable logistic regression (`glm`)
+- No penalisation or hyperparameter tuning
+- Joint estimation of predefined predictor sets
+- Separate complete-case analysis for each model
+- Adjusted ORs, 95% confidence intervals, and p-values
+- In-sample AUC estimates and 95% confidence intervals
 
-For treatment resistance, predictor sets derived from TR1 and TR2 discovery meta-analyses are evaluated in separate models against the same STAR*D resistance outcome.
+For treatment resistance, predictor sets derived from the TR1 and TR2 discovery meta-analyses are evaluated in separate models against the same treatment-resistance outcome in the replication cohort.
+
+The candidate predictors tested in the univariable analyses and the predictor sets entered into the multivariable models are specified separately. Multivariable predictor inclusion is not automatically determined by univariable significance in the replication cohort.
+
+Output:
+- Descriptive statistics by outcome status
+- Univariable ORs, 95% confidence intervals, and p-values
+- Multivariable adjusted ORs, 95% confidence intervals, and p-values
+- In-sample AUC estimates and 95% confidence intervals
+- CSV tables containing descriptive, univariable, and multivariable results
+- Summary tables of multivariable model performance
 
 Note:
-This stage represents independent replication of selected associations and multivariable model refitting, not external validation of the original discovery prediction models.
+Independent replication assesses whether selected associations are observed in a separate cohort and estimates their joint effects through model refitting. The reported AUCs reflect apparent discrimination within the replication sample, rather than predictive performance obtained by directly applying the original discovery models.
 
 ---
 
@@ -202,7 +219,8 @@ Outcome definitions, assessment periods, and treatment contexts differ across co
 - Downstream steps support consistency in modelling and reporting
 - Associations across diagnostic groups are assessed using random-effects meta-analysis
 - Predictive discrimination is evaluated separately from cross-cohort associations
-- Independent replication does not imply external validation of an unchanged prediction model
+- Independent replication is based on selected associations and model refitting in an independent cohort
+- Multivariable predictor sets are defined explicitly rather than automatically selected according to replication-cohort p-values
 
 ---
 
@@ -213,6 +231,7 @@ R (≥ 4.0 recommended)
 Key packages:
 - dplyr
 - tidyr
+- tibble
 - glmnet
 - pROC
 - metafor
@@ -228,7 +247,9 @@ Key packages:
 - File paths must be adapted locally
 - Raw data are not included in this repository
 - Candidate predictor sets and cohort-specific preprocessing must be defined before modelling
-- Outputs are generated as tables, model objects, and calibration plots for downstream use
+- The independent replication script includes both univariable and multivariable analyses
+- Multivariable replication models are fitted using standard logistic regression without penalisation
+- Outputs include descriptive tables, regression estimates, model summaries, and calibration plots where applicable
 - The repository provides adaptable analytical templates rather than an immediately executable reproduction of every cohort-specific analysis
 
 ---
