@@ -13,14 +13,14 @@ The code is designed to be applied across different cohorts and adapted to datas
 
 The main folder contains scripts corresponding to the full analytical workflow:
 
-```text
+```
 scripts_transdiagnostic_predictors_treatment_outcomes/
 ├── 00-preprocessing.R
 ├── 01-univariable_analyses.R
 ├── 02-multivariable_analyses.R
 ├── 03-univariable_age_sex_adjusted_for_meta-analyses.R
 ├── 04-meta-analyses_across_cohorts.R
-├── 05-external_validation.R
+├── 05-independent_replication.R
 ```
 
 Each script represents one step of the pipeline and can be adapted to different cohorts by modifying input data, outcome definitions, and variable mappings.
@@ -112,7 +112,7 @@ Generates harmonised effect estimates across cohorts.
 
 General model:
 
-```text
+```
 outcome ~ predictor + AGE + SEX
 ```
 
